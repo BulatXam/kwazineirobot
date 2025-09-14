@@ -7,7 +7,6 @@ from pydantic_settings import BaseSettings
 
 class ChatGPTConfig(BaseSettings):
     TOKEN: str
-    GEMINI_TOKEN: str
 
     class Config:
         env_prefix = 'CHATGPT_'

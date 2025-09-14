@@ -18,7 +18,7 @@ from src.config import cnf
 class ChatGPT:
     def __init__(self):
         self.client = openai.AsyncOpenAI(
-            api_key=cnf.chatgpt.GEMINI_TOKEN,
+            api_key=cnf.chatgpt.TOKEN,
             # http_client=httpx.AsyncClient(
             #     proxy=proxy,
             #     transport=httpx.HTTPTransport(local_address="0.0.0.0")
