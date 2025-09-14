@@ -1,32 +1,33 @@
 """Логика чат-бота для обработки заказов с профессиональным общением"""
 
+# import httpx
 import openai
-
-from io import BytesIO
-
-import json
 import asyncio
+import redis.asyncio as redis
+import base64
+import io
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Optional
 from loguru import logger
 
-from src.schemas.chatgpt import ProjectSchema, MessageSchema, DialogSchema
+from src.schemas.chatgpt import MessageSchema, DialogSchema
 
 from src.config import cnf
 
 
 class ChatGPT:
-    def __init__(self, api_key=cnf.chatgpt.TOKEN):
+    def __init__(self):
         self.client = openai.AsyncOpenAI(
-            api_key=api_key,
+            api_key=cnf.chatgpt.GEMINI_TOKEN,
             # http_client=httpx.AsyncClient(
             #     proxy=proxy,
             #     transport=httpx.HTTPTransport(local_address="0.0.0.0")
             # )
+            base_url="https://api.hydraai.ru/v1"
         )
-        self.redis = redis.from_url(redis_url)
+        self.redis = redis.from_url(cnf.redis.URL)
 
-        self.history_len = 20
+        self.history_len = 3
 
     @staticmethod
     def history_key_prefix(chat_id: str):
@@ -107,101 +108,23 @@ class ChatGPT:
                 messages=[]
             )
         )
-        await self.save_project(
-            chat_id=chat_id,
-            project=ProjectSchema()
-        )
-    
-    ############################## Project #####################################
-
-    async def get_project(self, chat_id: str):
-        project_params_json = await self.redis.get(
-            self.project_key_prefix(chat_id=chat_id)
-        )
-
-        if project_params_json:
-            project_params = json.loads(project_params_json)
-
-            project_schema = ProjectSchema(
-                **project_params
-            )
-        else:
-            project_schema = ProjectSchema()
-
-        logger.debug(f"Get project schema {project_schema}")
-
-        return project_schema
-
-    async def save_project(self, chat_id: str, project: ProjectSchema):
-        logger.debug(f"Save project {project}")
-
-        await self.redis.set(
-            name=self.project_key_prefix(chat_id=chat_id),
-            value=project.model_dump_json()
-        )
-
-    ################################ Messages ##################################
-
-    async def _extract_project_description_param(
-        self, chat_id: str, dialog_history: Optional[DialogSchema]
-    ):
-        project = await self.get_project(chat_id=chat_id)
-        
-        tz = await self._generate_ai_response(
-            chat_id=chat_id,
-            prompts=[
-                await self.get_project_description_prompt()
-            ],
-            dialog_history=dialog_history
-        )
-
-        project.description = tz
-
-        logger.debug(f"Save project description: {tz}")
-
-        await self.save_project(
-            chat_id=chat_id,
-            project=project
-        )
-
-    async def _extract_project_params(
-        self, chat_id: str
-    ) -> ProjectSchema:
-        """Извлекаем параметры проекта из сообщения"""
-        project_params_json = await self._generate_ai_response(
-            chat_id=chat_id, 
-            prompts=[
-                await self.get_project_promt(chat_id=chat_id)
-            ]
-        )
-
-        try:
-            project_params = json.loads(project_params_json)
-        except json.decoder.JSONDecodeError:
-            logger.error(
-                f"Ошибка json.decoder.JSONDecodeError для json: {project_params_json}"
-            )
-            project_params = {}
-
-        project_schema = ProjectSchema(**project_params)
-
-        await self.save_project(
-            chat_id=chat_id, project=project_schema
-        )
     
     async def _generate_ai_response(
         self, 
         chat_id: str,
-        prompts: List[str],
+        prompts: List[str] = None,
         dialog_history: Optional[DialogSchema] = None
     ) -> str:
         if not dialog_history:
             dialog_history = await self.get_chat_history(chat_id=chat_id)
 
-        system_messages = [MessageSchema(
-            role="system",
-            content=prompt,
-        ) for prompt in prompts]
+        if prompts:
+            system_messages = [MessageSchema(
+                role="system",
+                content=prompt,
+            ) for prompt in prompts]
+        else:
+            system_messages = []
 
         messages = [message.model_dump() for message in dialog_history.messages]
 
@@ -224,67 +147,59 @@ class ChatGPT:
 
         return response.choices[0].message.content
 
+    async def _generate_image(
+        self,
+        prompt: str,
+        model: str = "hydra-gemini"
+    ) -> Optional[bytes]:
+        """
+        Генерирует изображение по текстовому описанию через HydraAI API.
+        Возвращает URL изображения или None.
+        """
+        try:
+            response = await self.client.images.generate(
+                model=model,
+                prompt=prompt,
+                n=1,
+                size="1024x1024",
+                timeout=30,
+            )
+
+            return base64.b64decode(response.data[0].b64_json)
+        except Exception as e:
+            (f"prompt: {prompt} : model: {model}")
+            logger.error(f"Image generation error: {e} : prompt: {prompt} : model: {model}")
+            return None
+
     async def send_message(
         self, 
         chat_id: str, 
-        text: str, 
-        files: List[Dict] = [],
-    ) -> Tuple[str, ProjectSchema]:
+        text: str,
+        is_image: bool = False
+    ) -> str|bytes:
         """Основной метод обработки сообщений
         
         chat_id: идентификатор чата
         text: текст сообщения
-        files: [{
-            "blob": BytesIO,
-            "extension": расширение файла(.pdf, .doc|.docx, .xlsx)
-        }]
         """
 
-        if files:
-            extract_messages: List[MessageSchema] = []
-
-            for file in files:
-                file_blob = file["blob"]
-                file_extension = file["extension"]
-
-                if file_extension == "pdf":
-                    pdf_text = file_to_text.pdf_to_text(file_blob)
-
-                    extract_messages.append(
-                        MessageSchema(
-                            role="user",
-                            content=pdf_text
-                        )
-                    )
-                elif file_extension == "docx" or file_extension == "doc":
-                    docx_text = file_to_text.doc_to_text(file_blob)
-
-                    extract_messages.append(
-                        MessageSchema(
-                            role="user",
-                            content=docx_text
-                        )
-                    )
-                elif file_extension == "xlsx":
-                    xlsx_text = file_to_text.xlsx_to_text(file_to_text)
-
-                    extract_messages.append(
-                        MessageSchema(
-                            role="user",
-                            content=xlsx_text
-                        )
-                    )
-
-            if extract_messages:
-                await self._extract_project_description_param(
-                    chat_id=chat_id, dialog_history=DialogSchema(
-                        messages=extract_messages
-                    )
-                )
+        # Проверка на команду генерации изображения
+        if is_image:
+            model = "flux.1-schnell"
+            prompt = text
+            image_bytes = await self._generate_image(prompt, model)
+            # await self.append_chat_history(
+                # chat_id=chat_id,
+                # message=MessageSchema(
+                    # role="assistant",
+                    # content=answer,
+                # )
+            # )
+            return image_bytes
 
         message = MessageSchema(
             role="user",
-            content=text if text else "Мне необходимо сделать программу по ТЗ"
+            content=text
         )
 
         await self.append_chat_history(
@@ -293,10 +208,7 @@ class ChatGPT:
         )
 
         answer = await self._generate_ai_response(
-            chat_id=chat_id,
-            prompts=[
-                await self.get_dialog_promt(chat_id=chat_id)
-            ],
+            chat_id=chat_id
         )
 
         await self.append_chat_history(
@@ -307,8 +219,7 @@ class ChatGPT:
             )
         )
 
-        await self._extract_project_params(chat_id=chat_id)
-        
-        project_schema = await self.get_project(chat_id=chat_id)
+        return answer
 
-        return answer, project_schema
+
+chatgpt = ChatGPT()
