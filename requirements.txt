@@ -8,7 +8,6 @@ redis~=5.2.1
 # Config
 pydantic-settings~=2.4.0
 # ChatGPT
-httpx~=0.28.1
-openai~=0.28.1
+openai
 # Another
 loguru~=0.7.2

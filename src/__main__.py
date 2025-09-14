@@ -26,7 +26,7 @@ dp = Dispatcher(
     bot=bot,
     storage=MemoryStorage()
 )
-for router in routers[:-1]:
+for router in routers:
     print(router)
     dp.include_router(router)
 
