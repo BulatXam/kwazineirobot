@@ -1,9 +1,11 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
 
 from src.database.models.user import User
 
 from src.keyboards import menu as main_keyboards
+from src.callbacks import ActionCallback
 
 
 router = Router(name="main")
@@ -13,7 +15,7 @@ router = Router(name="main")
     F.text == "/start"
 )
 async def start(message: Message):
-    user: User = await User.check(
+    user: User = await User.get(
         user_id=message.from_user.id
     )
 
@@ -37,6 +39,51 @@ async def start(message: Message):
 """,
         reply_markup=main_keyboards.menu,
     )
+
+
+@router.callback_query(
+    ActionCallback.filter(F.action == "start")
+)
+async def start(call: CallbackQuery):
+    user: User = await User.get(
+        user_id=call.from_user.id
+    )
+
+    if not user:
+        user: User = await User.create(
+            user_id=call.from_user.id,
+            first_name=call.from_user.first_name,
+            last_name=call.from_user.last_name,
+            username=call.from_user.username,
+        )
+
+    try:
+        await call.message.edit_text(
+            text=f"""
+<b>👋 Добро пожаловать в NeuroGenius!</b>
+
+✨ <i>Я — твой личный помощник для генерации текстов и изображений с помощью искусственного интеллекта.</i>
+
+❓ <i>Чтобы узнать больше, используй команду</i> <code>/help</code>
+
+<pre>Твой уникальный ID в системе: #{user.id}</pre>
+""",
+            reply_markup=main_keyboards.menu,
+        )
+    except TelegramBadRequest:
+        await call.message.delete()
+        await call.message.answer(
+            text=f"""
+<b>👋 Добро пожаловать в NeuroGenius!</b>
+
+✨ <i>Я — твой личный помощник для генерации текстов и изображений с помощью искусственного интеллекта.</i>
+
+❓ <i>Чтобы узнать больше, используй команду</i> <code>/help</code>
+
+<pre>Твой уникальный ID в системе: #{user.id}</pre>
+""",
+            reply_markup=main_keyboards.menu,
+        )
 
 
 @router.message(

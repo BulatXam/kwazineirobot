@@ -13,16 +13,34 @@ menu = InlineKeyboardMarkup(
         [
             InlineKeyboardButton(
                 text="📝 Сгенерировать текст",
-                callback_data=ActionCallback(action="generate_text").pack()
+                callback_data=ActionCallback(
+                    action="generate_text_choice_model"
+                ).pack()
             ),
         ],
         [
             InlineKeyboardButton(
                 text="🖼️ Сгенерировать изображение",
-                callback_data=ActionCallback(action="generate_image").pack()
+                callback_data=ActionCallback(
+                    action="generate_image_choice_model"
+                ).pack()
             ),
         ],
     ],
+)
+
+
+back_in_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Назад в главное меню",
+                callback_data=ActionCallback(
+                    action="start"
+                ).pack()
+            )
+        ]
+    ]
 )
 
 

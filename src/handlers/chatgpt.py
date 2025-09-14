@@ -1,84 +1,136 @@
+import io
+
+from loguru import logger
+
 from aiogram import Router, F
-from aiogram.types import Message, FSInputFile, CallbackQuery
+from aiogram.types import Message, FSInputFile, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-from src.keyboards import chatgpt as chatgpt_keyboards
+from src.database.models.user import User, NeiroResponse
 
-from src.states import neirochat as neirochat_states
+from src.keyboards import chatgpt as chatgpt_keyboards
+from src.keyboards import menu as menu_keyboards
+
+from src.states import neirochat as chatgpt_states
+from src.callbacks import ActionCallback, ActionDataCallback
+
+from src.utils.chatgpt import chatgpt
 
 router = Router(name="neirochat")
 
 
-@router.message(F.text == "📝 Сгенерировать текст")
-async def gen_text(message: Message, state: FSMContext):
-    await message.answer(
+@router.callback_query(ActionCallback.filter(F.action == "generate_text_choice_model"))
+async def gen_text(call: CallbackQuery, state: FSMContext):
+    await call.message.answer(
         text="Пожалуйста выберите модель для генерации текста.",
         reply_markup=chatgpt_keyboards.gen_text_choice_model
     )
 
 
-@router.callback_query(F.data.startswith() == "generate_text")
-async def gen_text(call: CallbackQuery, state: FSMContext):
-    pass
+@router.callback_query(ActionDataCallback.filter(F.action == "generate_text"))
+async def gen_text(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+    data = callback_data.data
 
+    if data == "gpt-4-turbo":
+        text = "Вы выбрали модель: gpt-4-turbo\n\n"
+    elif data == "gpt-4":
+        text = "Вы выбрали модель: gpt-4\n\n"
 
-@router.message(neirochat_states.NeiroChatStates.waiting_for_text_prompt)
-async def handle_text_prompt(message: Message, state: FSMContext):
-    user_prompt = message.text
-
-    # Здесь должна быть логика генерации текста с помощью ИИ
-    generated_text = f"Сгенерированный текст на основе вашего запроса: {user_prompt}"
-
-    await message.answer(
-        text=generated_text
-    )
-    user = await User.get(user_id=message.from_user.id)
-    await GeneratedText.create(
-        author=user,
-        prompt=user_prompt,
-        content=generated_text
+    await call.message.delete()
+    await call.message.answer(
+        text=text + "Начните диалог с chatGPT. Чтобы остановить диалог нажмите на клавиатуре ниже 'Остановить'",
+        reply_markup=chatgpt_keyboards.stop_chat
     )
 
-    await state.clear()
+    await state.set_state(chatgpt_states.NeiroChatStates.waiting_for_text_prompt)
 
 
-@router.message(F.text == "🖼️ Сгенерировать изображение")
-async def gen_image(message: Message, state: FSMContext):
-    await message.answer(
-        text="🖼️ Пожалуйста, введите текстовый запрос для генерации изображения с помощью искусственного интеллекта."
-    )
+@router.message(chatgpt_states.NeiroChatStates.waiting_for_text_prompt)
+async def waiting_text_message(message: Message, state: FSMContext):
+    text = message.text
 
-    await state.set_state(neirochat_states.NeiroChatStates.waiting_for_image_prompt)
-
-
-@router.message(neirochat_states.NeiroChatStates.waiting_for_image_prompt)
-async def handle_image_prompt(message: Message, state: FSMContext):
-    user_prompt = message.text
-
-    # Здесь должна быть логика генерации изображения с помощью ИИ
-    # Для демонстрации мы просто отправим заглушку
-    image_file = FSInputFile(
-        STATIC_DIR / "404.jpg",
-        filename="generated_image.png"
-    )
-
-    try:
-        await message.answer_photo(
-            photo=image_file,
-            caption=f"Сгенерированное изображение на основе вашего запроса: {user_prompt}"
-        )
-        user = await User.get(user_id=message.from_user.id)
-        await GeneratedImage.create(
-            author=user,
-            prompt=user_prompt,
-            image_path=STATIC_DIR / "404.jpg"
-        )
-    except TelegramBadRequest as e:
+    if text == "Остановить":
+        await state.clear()
         await message.answer(
-            text="Произошла ошибка при отправке изображения. Пожалуйста, попробуйте снова."
+            "Вы остановили диалог с ботом! Нажмите чтобы перейти в главное меню",
+            reply_markup=menu_keyboards.back_in_menu
+        )
+        return
+
+    neiro_answer = await chatgpt.send_message(
+        chat_id=message.from_user.id,
+        text=text,
+    )
+
+    if isinstance(neiro_answer, str):
+        await message.answer(
+            text=neiro_answer
+        )
+    elif isinstance(neiro_answer, bytes):
+        await message.answer_photo(
+            photo=BufferedInputFile(file=neiro_answer, filename="img.jpg"),
+            parse_mode=None
         )
 
-    await state.clear()
+    user = await User.get(user_id=message.from_user.id)
+
+    await NeiroResponse.create(
+        user_id=user.id,
+        prompt=text,
+        msg_type="text"
+    )
+
+
+@router.callback_query(ActionCallback.filter(F.action == "generate_image_choice_model"))
+async def choice_model(call: CallbackQuery, state: FSMContext):
+    await call.message.edit_text(
+        text="Выберите модель:",
+        reply_markup=chatgpt_keyboards.gen_img_choice_model
+    )
+
+
+@router.callback_query(ActionDataCallback.filter(F.action == "generate_image"))
+async def generate_image(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+    data = callback_data.data
+
+    if data == "hydro-gemini":
+        text = "Вы выбрали модель: hydro-gemini\n\n"
+    elif data == "flux.1-schnell":
+        text = "Вы выбрали модель: flux.1-schnell\n\n"
+
+    await call.message.answer(text+"Введите ваш промпт для изображения: ")
+
+    await state.set_state(chatgpt_states.NeiroChatStates.waiting_for_image_prompt)
+
+
+@router.message(chatgpt_states.NeiroChatStates.waiting_for_image_prompt)
+async def image_gen(message: Message, state: FSMContext):
+    text = message.text
+
+    neiro_answer = await chatgpt.send_message(
+        chat_id=message.from_user.id,
+        text=text,
+        is_image=True
+    )
+
+    if isinstance(neiro_answer, str):
+        await message.answer(
+            text=neiro_answer
+        )
+    elif isinstance(neiro_answer, bytes):
+        await message.answer_photo(
+            caption="Поздравляем, вы создали изображение!",
+            photo=BufferedInputFile(file=neiro_answer, filename="img.jpg"),
+            reply_markup=menu_keyboards.back_in_menu,
+        )
+    
+    user = await User.get(user_id=message.from_user.id)
+
+    await NeiroResponse.create(
+        user_id=user.id,
+        prompt=text,
+        msg_type="img"
+    )
 
 # rulers 80
