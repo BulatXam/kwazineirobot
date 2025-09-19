@@ -5,11 +5,13 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
-class ChatGPTConfig(BaseSettings):
+class OpenAIConfig(BaseSettings):
     TOKEN: str
+    IMAGES_LIMIT: int = 1000
+    TEXTS_LIMIT: int = 1000
 
     class Config:
-        env_prefix = 'CHATGPT_'
+        env_prefix = 'OPENAI_'
         env_file = '.env'
         extra = 'ignore'
 
@@ -94,7 +96,7 @@ class Config:
     redis = RedisConfig()
     bot = BotConfig()
     proj = ProjConfig()
-    chatgpt = ChatGPTConfig()
+    openai = OpenAIConfig()
 
 
 cnf = Config()

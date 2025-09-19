@@ -7,7 +7,7 @@ asyncpg~=0.30.0
 redis~=5.2.1
 # Config
 pydantic-settings~=2.4.0
-# ChatGPT
-openai
 # Another
+openai
 loguru~=0.7.2
+APScheduler~=3.11.0

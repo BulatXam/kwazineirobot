@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from .models.core.base import BaseModel
+from .models.base import BaseModel
 
 from ..config import cnf
 
@@ -10,7 +10,7 @@ engine = create_async_engine(
     max_overflow=20
 )
 
-postgres_conn = async_sessionmaker(engine)
+conn = async_sessionmaker(engine)
 
 
 async def init_psql() -> bool:
@@ -18,7 +18,7 @@ async def init_psql() -> bool:
         Create all tables in db
     :return: True or False
     """
-    async with postgres_conn() as s:
+    async with conn() as s:
         # await s.run_sync(
         #     lambda s_value: Base.metadata.drop_all(
         #         bind=s_value.bind

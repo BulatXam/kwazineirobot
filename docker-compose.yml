@@ -28,7 +28,7 @@ services:
   bot:
     build:
       context: .
-      dockerfile: bot.dockerfile
+      dockerfile: Dockerfile
     restart: always
     depends_on:
       - postgres

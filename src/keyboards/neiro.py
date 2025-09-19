@@ -12,19 +12,19 @@ gen_text_choice_model = InlineKeyboardMarkup(
     inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="gpt-4-turbo",
+                text="hydra-gemini",
                 callback_data=ActionDataCallback(
                     action="generate_text",
-                    data="gpt-4-turbo"
+                    data="hydra-gemini"
                 ).pack()
             ),
         ],
         [
             InlineKeyboardButton(
-                text="gpt-4",
+                text="gpt-4-turbo",
                 callback_data=ActionDataCallback(
                     action="generate_text",
-                    data="gpt-4"
+                    data="gpt-4-turbo"
                 ).pack()
             ),
         ],
@@ -44,19 +44,19 @@ gen_img_choice_model = InlineKeyboardMarkup(
     inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="hydro-gemini",
+                text="flux.1-schnell",
                 callback_data=ActionDataCallback(
                     action="generate_image",
-                    data="hydro-gemini"
+                    data="flux.1-schnell"
                 ).pack()
             ),
         ],
         [
             InlineKeyboardButton(
-                text="flux.1-schnell",
+                text="dall-e-3",
                 callback_data=ActionDataCallback(
                     action="generate_image",
-                    data="flux.1-schnell"
+                    data="dall-e-3"
                 ).pack()
             ),
         ],

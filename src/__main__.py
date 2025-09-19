@@ -10,9 +10,12 @@ from aiogram.types import BotCommandScopeDefault, BotCommandScopeChat
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums.parse_mode import ParseMode
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 from .handlers import routers
 from .config import cnf
 from .database.core import init_psql
+from .utils.scheduler import update_users_limits
 
 
 bot = Bot(
@@ -26,10 +29,8 @@ dp = Dispatcher(
     bot=bot,
     storage=MemoryStorage()
 )
-for router in routers:
-    print(router)
-    dp.include_router(router)
 
+scheduler = AsyncIOScheduler()
 
 async def startup(bot: Bot) -> None:
     """
@@ -40,6 +41,7 @@ async def startup(bot: Bot) -> None:
     # Init dbs
     await init_psql()
     # Setting bot
+    dp.include_routers(*routers)
     await bot.delete_webhook()
     await bot.set_my_commands(
         commands=cnf.bot.COMMANDS,
@@ -51,6 +53,12 @@ async def startup(bot: Bot) -> None:
                 cnf.bot.COMMANDS + cnf.bot.ADMIN_COMMANDS,
                 scope=BotCommandScopeChat(chat_id=admin)
             )
+
+    scheduler.add_job(
+        update_users_limits,
+        trigger='cron',
+        hour=00, minute=00
+    )
 
     logger.info('=== Bot started ===')
 

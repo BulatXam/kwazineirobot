@@ -1,11 +1,12 @@
-from sqlalchemy import Column, String, BigInteger, Integer, ForeignKey
+from sqlalchemy import Column, String, BigInteger, Integer, ForeignKey, Float
 from sqlalchemy.orm import relationship
 
-from .core.base import BaseModel
-from .core.crud import ModelCRUD
+from src.config import cnf
+
+from .base import BaseModel
 
 
-class User(BaseModel, ModelCRUD):
+class User(BaseModel):
     __tablename__ = "users"
 
     user_id = Column(BigInteger, unique=True, index=True, nullable=False)
@@ -13,17 +14,9 @@ class User(BaseModel, ModelCRUD):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=True)
 
+    daily_text_limit = Column(Float, default=cnf.openai.TEXTS_LIMIT)
+    daily_image_limit = Column(Float, default=cnf.openai.IMAGES_LIMIT)
 
-class NeiroResponse(BaseModel, ModelCRUD):
-    __tablename__ = "neiro_response"
-
-    user_id = Column(
-        Integer,
-        ForeignKey("User.id", ondelete='CASCADE'),
-        nullable=False,
-        # no need to add index=True, all FKs have indexes
-    )
-    user = relationship('User', backref='clients')
-
-    msg_type = Column(String, default="text") # text or img
-    prompt = Column(String) # text or img
+    # константы сколько лимит должен быть на след день
+    const_daily_text_limit = Column(Float, default=cnf.openai.TEXTS_LIMIT)    
+    const_daily_image_limit = Column(Float, default=cnf.openai.IMAGES_LIMIT)
