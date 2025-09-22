@@ -1,5 +1,5 @@
 from sqlalchemy import select, func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.database.core import conn
 from src.database.models.user import User
