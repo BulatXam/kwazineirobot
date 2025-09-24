@@ -58,11 +58,6 @@ async def waiting_text_message(message: Message, session: AsyncSession, state: F
     model = state_data.get("model")
     prompt = message.text
 
-    neiro_answer, total_tokens = await neiro_chat.send_message(
-        chat_id=message.from_user.id,
-        prompt=prompt,
-    )
-
     user: User = await User.get(
         session=session,
         user_id=message.from_user.id
@@ -81,6 +76,11 @@ async def waiting_text_message(message: Message, session: AsyncSession, state: F
         subtracting_responces = 1.4
 
     user.daily_text_limit = user.daily_text_limit - subtracting_responces
+
+    neiro_answer, total_tokens = await neiro_chat.send_message(
+        chat_id=message.from_user.id,
+        prompt=prompt,
+    )
 
     await NeiroResponse.create(
         session=session,
@@ -138,6 +138,18 @@ async def image_gen(message: Message, session: AsyncSession, state: FSMContext):
     model = state_data.get("model")
     prompt = message.text
 
+    user: User = await User.get(
+        session=session,
+        user_id=message.from_user.id
+    )
+
+    if user.daily_image_limit < 1.4:
+        await message.answer(
+            text="К сожалению ваш дневной лимит запросов изображений исчерпан!",
+            reply_markup=menu_keyboards.back_in_menu
+        )
+        return
+
     neiro_answer, total_tokens = await neiro_chat.send_message(
         chat_id=message.from_user.id,
         prompt=prompt,
@@ -148,11 +160,6 @@ async def image_gen(message: Message, session: AsyncSession, state: FSMContext):
         async with session.get(neiro_answer) as resp:
             img_bytes = await resp.read()
 
-    user: User = await User.get(
-        session=session,
-        user_id=message.from_user.id
-    )
-
     await NeiroResponse.create(
         session=session,
         user=user,
@@ -161,13 +168,6 @@ async def image_gen(message: Message, session: AsyncSession, state: FSMContext):
         content=neiro_answer,
         total_tokens=total_tokens
     )
-
-    if user.daily_image_limit < 1.4:
-        await message.answer(
-            text="К сожалению ваш дневной лимит запросов изображений исчерпан!",
-            reply_markup=menu_keyboards.back_in_menu
-        )
-        return
     
     if model == "flux.1-schnell":
         subtracting_responces = 1 # Сколько запросов надо вычесть
