@@ -15,9 +15,8 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.core import conn
 from src.database.models.user import User
 
 from src.utils import mailing as mailing_utils
@@ -215,7 +214,7 @@ async def admin_mailing_always_cancel(
 
 
 @router.message(admin_states.AddMailingLink.link)
-async def i(message: Message, state: FSMContext):
+async def i(message: Message, session: AsyncSession, state: FSMContext):
     link = message.text
 
     try:
@@ -252,13 +251,11 @@ async def i(message: Message, state: FSMContext):
     reply_markup = await mailing_keyboards.mailing_next(
         keyboard=keyboard
     )
-
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.user_id == message.from_user.id)
-        )
-
-        user = user_query.scalars().one_or_none()
+    
+    user = await User.get(
+        session=session,
+        user_id=message.from_user.id
+    )
 
     msg_text = f"<b>Ваше сообщение:</b> \n\n{text}" if text else ""
 
@@ -280,7 +277,7 @@ async def i(message: Message, state: FSMContext):
 
 
 @router.callback_query(ActionCallback.filter(F.action == 'mailing_next'))
-async def mailing_next(callback: CallbackQuery, state: FSMContext):
+async def mailing_next(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     await state.set_state(None)
     await callback.message.delete()
 
@@ -300,12 +297,10 @@ async def mailing_next(callback: CallbackQuery, state: FSMContext):
         keyboard=keyboard
     )
 
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.user_id == callback.from_user.id)
-        )
-
-        user = user_query.scalars().one()
+    user = await User.get(
+        session=session,
+        user_id=callback.from_user.id
+    )
 
 
     msg_text = f"<b>Ваше сообщение:</b> \n\n{text}" if text else ""
@@ -336,7 +331,7 @@ async def mailing_next(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(ActionCallback.filter(F.action == 'admin_mailing_done'))
-async def mailing_next(callback: CallbackQuery, state: FSMContext):
+async def mailing_next(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     await callback.answer(
         text='🚀 Запущена! Ожидайте отчёт.',
         parse_mode='HTML'
@@ -353,11 +348,7 @@ async def mailing_next(callback: CallbackQuery, state: FSMContext):
         buttons_text=data.get("keyboard")
     ) if data.get("keyboard") else []
     
-    async with conn() as session:
-        all_users_query = await session.execute(
-            select(User)
-        )
-        all_users = all_users_query.scalars().all()
+    all_users = await User.all(session=session)
 
     await state.update_data(
         mailing_stop_flag=False,
@@ -366,6 +357,7 @@ async def mailing_next(callback: CallbackQuery, state: FSMContext):
 
     await asyncio.gather(
         mailing_message_progress_i(
+            session=session,
             state=state, 
             text=text, 
             photo=photo, 
@@ -378,7 +370,7 @@ async def mailing_next(callback: CallbackQuery, state: FSMContext):
             all_users=all_users
         ),
         mailing_message_progress_edit_text(
-            state=state, callback=callback
+            state=state, callback=callback, session=session
         )
     )
 
@@ -392,6 +384,7 @@ async def mailing_next(callback: CallbackQuery, state: FSMContext):
 
 async def mailing_message_progress_i(
     state: FSMContext,
+    session: AsyncSession,
     text: str|None, 
     photo: str|None, 
     video: str|None, 
@@ -400,16 +393,12 @@ async def mailing_message_progress_i(
     video_note: str|None, 
     keyboard: List[InlineKeyboardButton]|None,
     message: Message|CallbackQuery,
-    all_users: List[User] = []
+    all_users: List[User] = [],
 ):
     data = await state.get_data()
 
     if not all_users:
-        async with conn() as session:
-            user_query = await session.execute(
-                select(User)
-            )
-            all_users = user_query.scalars().all()
+        all_users = User.all(session=session)
 
     bot = message.bot
 
@@ -454,18 +443,12 @@ async def mailing_message_progress_i(
 
 
 async def mailing_message_progress_edit_text(
-    callback: CallbackQuery, state: FSMContext
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ):
     data = await state.get_data()
     message = callback.message
 
-    async with conn() as session:
-        all_users_query = await session.execute(
-            select(func.count()).select_from(User)
-        )
-
-        all_user_count = all_users_query.scalar()
-
+    all_user_count = await User.count(session=session)
 
     i = 0
     success_i =  0

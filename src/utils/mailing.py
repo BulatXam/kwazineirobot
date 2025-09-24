@@ -6,9 +6,6 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 
-from sqlalchemy import select
-
-from src.database.core import conn
 from src.database.models.user import User
 
 

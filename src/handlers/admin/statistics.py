@@ -6,6 +6,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from src.database.core import conn
@@ -20,11 +21,13 @@ from src.keyboards.admin import statistics as statistics_keyboards
 
 from src.states import admin as admin_states
 
+from src.texts import statistics as statistics_texts
+
 
 router = Router(name="statistics")
 
 @router.callback_query(ActionDataCallback.filter(F.action == "paginator_user_statistic"))
-async def statistics(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+async def statistics(call: CallbackQuery, session: AsyncSession, callback_data: ActionDataCallback, state: FSMContext):
     await call.answer("")
 
     state_data = await state.get_data()
@@ -37,42 +40,36 @@ async def statistics(call: CallbackQuery, callback_data: ActionDataCallback, sta
 
     action = callback_data.data
 
-    async with conn() as session:
-        all_users_query = await session.execute(
-            select(func.count()).select_from(User)
-        )
+    all_users_count = await User.count(session=session)
 
-        all_users_count = all_users_query.scalar()
-        pages_count = math.ceil(all_users_count/num_in_page)
+    pages_count = math.ceil(all_users_count/num_in_page)
 
-        # делаем зацикливание страниц при их перелистывании
-        if action == "next":
-            if current_page < pages_count:
-                current_page += 1
-            else:
-                current_page = 1
-        elif action == "last":
-            if current_page > 1:
-                current_page -= 1
-            else:
-                current_page = pages_count
+    # делаем зацикливание страниц при их перелистывании
+    if action == "next":
+        if current_page < pages_count:
+            current_page += 1
+        else:
+            current_page = 1
+    elif action == "last":
+        if current_page > 1:
+            current_page -= 1
+        else:
+            current_page = pages_count
 
-        await state.update_data(current_page=current_page)
+    await state.update_data(current_page=current_page)
 
-        users_in_page_query = await session.execute(
-            select(User).offset(current_page*num_in_page-num_in_page).limit(num_in_page)
-        )
+    users_in_page_query = await session.execute(
+        select(User).offset(current_page*num_in_page-num_in_page).limit(num_in_page)
+    )
 
-        users_in_page = users_in_page_query.scalars().all()
-
-
+    users_in_page = users_in_page_query.scalars().all()
     
     await call.message.edit_text(
         text=f"""
 Страница: <b>{current_page}</b>
 Всего страниц:<b>{pages_count}</b>
 
-{await statistics_utils.get_statics_text()}
+{await statistics_utils.get_statics_text(session=session)}
 """,
         reply_markup=statistics_keyboards.paginator_users_statistic(
             users=users_in_page, current_page=current_page, num_in_page=num_in_page
@@ -81,7 +78,7 @@ async def statistics(call: CallbackQuery, callback_data: ActionDataCallback, sta
 
 
 @router.callback_query(ActionDataCallback.filter(F.action == "get_user_statistic"))
-async def get_user_statistic(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+async def get_user_statistic(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext, session: AsyncSession):
     user__id_data = callback_data.data
 
     await state.set_state(None)
@@ -92,30 +89,23 @@ async def get_user_statistic(call: CallbackQuery, callback_data: ActionDataCallb
     else:
         user__id = int(user__id_data)
 
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.id == user__id)
-        )
-
-        user = user_query.scalars().one_or_none()
+    user: User = await User.get(
+        session=session,
+        id=user__id
+    )
     
     await state.update_data(
         user__id=user.id
     )
 
     await call.message.edit_text(
-        text=f"""
-<b>Пользователь №{user.id}</b>
-
-Имя: <b>{user.first_name}</b>
-Фамиля: <b>{user.last_name}</b>
-Никнейм: <b>{user.username}</b>
-
-Осталось текстовых запросов: <b>{round(user.daily_text_limit)}</b>
-Осталось запросов изображений: <b>{round(user.daily_image_limit)}</b>
-
-{await statistics_utils.get_statics_text(user=user)}
-""",
+        text=statistics_texts.user_statistic(
+            user=user,
+            statistic_text=await statistics_utils.get_statics_text(
+                session=session,
+                user=user
+            )
+        ),
         reply_markup=statistics_keyboards.get_user_by_paginator_users_statistic
     )
 
@@ -129,7 +119,7 @@ async def user_change_tokens_limit(call: CallbackQuery):
 
 
 @router.callback_query(ActionDataCallback.filter(F.action == "user_change_tokens_limit_text_or_image"))
-async def user_change_tokens_limit(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+async def user_change_tokens_limit(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext, session: AsyncSession):
     state_data = await state.get_data()
 
     data = callback_data.data
@@ -139,12 +129,11 @@ async def user_change_tokens_limit(call: CallbackQuery, callback_data: ActionDat
     )
 
     user__id = state_data.get("user__id")
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.id == user__id)
-        )
-
-        user = user_query.scalars().one_or_none()
+    
+    user = await User.get(
+        session=session,
+        id=user__id
+    )
 
     if data == "text":
         limit = user.const_daily_text_limit
@@ -160,36 +149,35 @@ async def user_change_tokens_limit(call: CallbackQuery, callback_data: ActionDat
 
 
 @router.message(admin_states.AdminMailingChange.limit)
-async def admin_mailing_change_limit(message: Message, state: FSMContext):
+async def admin_mailing_change_limit(message: Message, state: FSMContext, session: AsyncSession):
     state_data = await state.get_data()
     
     limit = message.text
     text_or_image = state_data.get("text_or_image")
     user__id = state_data.get("user__id")
 
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.id == user__id)
-        )
+    user: User = await User.get(
+        session=session,
+        id=user__id,
+    )
 
-        user = user_query.scalars().one_or_none()
+    if text_or_image == "text":
+        last_limit = user.const_daily_text_limit
 
-        if text_or_image == "text":
-            last_limit = user.const_daily_text_limit
+        user.const_daily_text_limit = int(limit)
+    elif text_or_image == "image":
+        last_limit = user.const_daily_image_limit
 
-            user.const_daily_text_limit = int(limit)
-        elif text_or_image == "image":
-            last_limit = user.const_daily_image_limit
-
-            user.const_daily_image_limit = int(limit)
-        
-        await session.commit()
+        user.const_daily_image_limit = int(limit)
+    
+    await session.commit()
+    await session.refresh(user)
         
     await message.answer(f"Вы успешнос сменили лимит токенов с {last_limit} на {limit}")
 
 
 @router.callback_query(ActionDataCallback.filter(F.action == "paginator_user_history"))
-async def user_history(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+async def user_history(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext, session: AsyncSession):
     await call.answer("")
 
     state_data = await state.get_data()
@@ -203,43 +191,40 @@ async def user_history(call: CallbackQuery, callback_data: ActionDataCallback, s
 
     action = callback_data.data
 
-    async with conn() as session:
-        all_neiro_responses_query = await session.execute(
-            select(func.count()).select_from(NeiroResponse)
-        )
-        all_neiro_responses_count = all_neiro_responses_query.scalar()
-        pages_count = math.ceil(all_neiro_responses_count / num_in_page)
+    all_neiro_responses_count = await NeiroResponse.count(session=session)
+    pages_count = math.ceil(all_neiro_responses_count / num_in_page)
 
-        # делаем зацикливание страниц при их перелистывании
-        if action == "next":
-            if current_page < pages_count:
-                current_page += 1
-            else:
-                current_page = 1
-        elif action == "last":
-            if current_page > 1:
-                current_page -= 1
-            else:
-                current_page = pages_count
-        
+    # делаем зацикливание страниц при их перелистывании
+    if action == "next":
+        if current_page < pages_count:
+            current_page += 1
+        else:
+            current_page = 1
+    elif action == "last":
+        if current_page > 1:
+            current_page -= 1
+        else:
+            current_page = pages_count
+    
 
-        # Получаем нужные объекты NeiroResponse для текущей страницы
-        offset = (current_page - 1) * num_in_page
-        logger.info(f"offset:{offset} current_page:{current_page}")
-        neiro_responses_in_page_query = await session.execute(
-            select(NeiroResponse).order_by(NeiroResponse.id).offset(offset).limit(num_in_page)
-        )
-        neiro_responses_in_page = neiro_responses_in_page_query.scalars().all()
+    # Получаем нужные объекты NeiroResponse для текущей страницы
+    offset = (current_page - 1) * num_in_page
+    logger.info(f"offset:{offset} current_page:{current_page}")
+
+    neiro_responses_in_page_query = await session.execute(
+        select(NeiroResponse).order_by(NeiroResponse.id).offset(offset).limit(num_in_page)
+    )
+    neiro_responses_in_page = neiro_responses_in_page_query.scalars().all()
 
     await state.update_data(user_history_current_page=current_page)
 
     await call.message.edit_text(
-        text=f"""
-Страница: <b>{current_page}</b>
-Всего страниц:<b>{pages_count}</b>
-Запросов в странице: <b>{len(neiro_responses_in_page)}</b>
-Всего запросов в нейросеть: {all_neiro_responses_count}
-""",
+        text=statistics_texts.user_history(
+            current_page=current_page,
+            pages_count=pages_count,
+            neiro_responses_in_page_len=len(neiro_responses_in_page),
+            all_neiro_responses_count=all_neiro_responses_count
+        ),
         reply_markup=statistics_keyboards.paginator_user_history(
             neiro_responses=neiro_responses_in_page,
             current_page=current_page,
@@ -249,7 +234,7 @@ async def user_history(call: CallbackQuery, callback_data: ActionDataCallback, s
 
 
 @router.callback_query(ActionDataCallback.filter(F.action == "get_user_neiro_response"))
-async def get_user_neiro_response(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext):
+async def get_user_neiro_response(call: CallbackQuery, callback_data: ActionDataCallback, state: FSMContext, session: AsyncSession):
     neiro_response__id_data = callback_data.data
 
     await state.set_state(None)
@@ -260,25 +245,16 @@ async def get_user_neiro_response(call: CallbackQuery, callback_data: ActionData
     else:
         neiro_response__id = int(neiro_response__id_data)
 
-    async with conn() as session:
-        neiro_response_query = await session.execute(
-            select(NeiroResponse).where(NeiroResponse.id == neiro_response__id)
-        )
-
-        neiro_response = neiro_response_query.scalars().one_or_none()
+    neiro_response: NeiroResponse = await NeiroResponse.get(
+        session=session,
+        id=neiro_response__id
+    )
     
     await state.update_data(
         neiro_response__id=neiro_response.id
     )
 
     await call.message.edit_text(
-        text=f"""
-Модель: <b>{neiro_response.model}</b>
-
-Промпт: <b>{neiro_response.prompt}</b>
-Ответ: <b><code>{neiro_response.content}</code></b>
-
-Потрачено токенов: <b>{neiro_response.total_tokens}</b>
-""",
+        text=statistics_texts.user_history_response(neiro_response=neiro_response),
         reply_markup=statistics_keyboards.back_in_paginator_user_history
     )

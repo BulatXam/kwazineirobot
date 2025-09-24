@@ -2,12 +2,6 @@ from loguru import logger
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
-
-from sqlalchemy import select
-
-from src.database.core import conn
-from src.database.models.user import User
 
 from src.callbacks import ActionCallback
 

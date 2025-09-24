@@ -4,9 +4,8 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 
-from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.core import conn
 from src.database.models.user import User
 from src.database.models.neiro import NeiroResponse
 
@@ -53,7 +52,7 @@ async def gen_text(call: CallbackQuery, callback_data: ActionDataCallback, state
 
 
 @router.message(neiro_states.NeiroChatStates.waiting_for_text_prompt)
-async def waiting_text_message(message: Message, state: FSMContext):
+async def waiting_text_message(message: Message, session: AsyncSession, state: FSMContext):
     state_data = await state.get_data()
     
     model = state_data.get("model")
@@ -64,37 +63,37 @@ async def waiting_text_message(message: Message, state: FSMContext):
         prompt=prompt,
     )
 
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.user_id == message.from_user.id)
+    user: User = await User.get(
+        session=session,
+        user_id=message.from_user.id
+    )
+
+    if user.daily_text_limit < 1.4:
+        await message.answer(
+            text="К сожалению ваш дневной лимит текстовых запросов исчерпан!",
+            reply_markup=menu_keyboards.back_in_menu
         )
-        user = user_query.scalars().one_or_none()
+        return
+    
+    if model == "hydra-gemini":
+        subtracting_responces = 1 # Сколько запросов надо вычесть
+    else:
+        subtracting_responces = 1.4
 
-        if user.daily_text_limit < 1.4:
-            await message.answer(
-                text="К сожалению ваш дневной лимит текстовых запросов исчерпан!",
-                reply_markup=menu_keyboards.back_in_menu
-            )
-            return
-        
-        if model == "hydra-gemini":
-            subtracting_responces = 1 # Сколько запросов надо вычесть
-        else:
-            subtracting_responces = 1.4
+    user.daily_text_limit = user.daily_text_limit - subtracting_responces
 
-        user.daily_text_limit = user.daily_text_limit - subtracting_responces
+    await NeiroResponse.create(
+        session=session,
+        user=user,
+        type="text",
+        prompt=prompt,
+        content=neiro_answer,
+        total_tokens=total_tokens,
+        model=model
+    )
 
-        neiro_response = NeiroResponse(
-            user=user,
-            type="text",
-            prompt=prompt,
-            content=neiro_answer,
-            total_tokens=total_tokens,
-            model=model
-        )
-        session.add(neiro_response)
-        await session.commit()
-        await session.refresh(user)
+    await session.commit()
+    await session.refresh(user)
 
     available_responses = round(user.daily_text_limit)
 
@@ -133,7 +132,7 @@ async def generate_image(call: CallbackQuery, callback_data: ActionDataCallback,
 
 
 @router.message(neiro_states.NeiroChatStates.waiting_for_image_prompt)
-async def image_gen(message: Message, state: FSMContext):
+async def image_gen(message: Message, session: AsyncSession, state: FSMContext):
     state_data = await state.get_data()
 
     model = state_data.get("model")
@@ -149,36 +148,36 @@ async def image_gen(message: Message, state: FSMContext):
         async with session.get(neiro_answer) as resp:
             img_bytes = await resp.read()
 
-    async with conn() as session:
-        user_query = await session.execute(
-            select(User).where(User.user_id == message.from_user.id)
+    user: User = await User.get(
+        session=session,
+        user_id=message.from_user.id
+    )
+
+    await NeiroResponse.create(
+        session=session,
+        user=user,
+        type="image",
+        prompt=prompt,
+        content=neiro_answer,
+        total_tokens=total_tokens
+    )
+
+    if user.daily_image_limit < 1.4:
+        await message.answer(
+            text="К сожалению ваш дневной лимит запросов изображений исчерпан!",
+            reply_markup=menu_keyboards.back_in_menu
         )
-        user = user_query.scalars().one_or_none()
-        neiro_response = NeiroResponse(
-            user=user,
-            type="image",
-            prompt=prompt,
-            content=neiro_answer,
-            total_tokens=total_tokens
-        )
-        session.add(neiro_response)
+        return
+    
+    if model == "flux.1-schnell":
+        subtracting_responces = 1 # Сколько запросов надо вычесть
+    else:
+        subtracting_responces = 1.4
+    
+    user.daily_image_limit = user.daily_image_limit - subtracting_responces
 
-        if user.daily_image_limit < 1.4:
-            await message.answer(
-                text="К сожалению ваш дневной лимит текстовых запросов исчерпан!",
-                reply_markup=menu_keyboards.back_in_menu
-            )
-            return
-        
-        if model == "flux1.schell":
-            subtracting_responces = 1 # Сколько запросов надо вычесть
-        else:
-            subtracting_responces = 1.4
-
-        user.daily_image_limit = user.daily_image_limit - subtracting_responces
-        await session.commit()
-        await session.refresh(user)
-
+    await session.commit()
+    await session.refresh(user)
 
     available_responses = round(user.daily_image_limit)
 

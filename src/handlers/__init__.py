@@ -1,6 +1,6 @@
-from .main import router as main_router
-from .neiro import router as neiro_router
-from .admin import router as admin_router
+from src.handlers.main import router as main_router
+from src.handlers.neiro import router as neiro_router
+from src.handlers.admin import router as admin_router
 
 
 routers = [

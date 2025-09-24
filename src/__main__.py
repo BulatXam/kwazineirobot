@@ -12,10 +12,11 @@ from aiogram.enums.parse_mode import ParseMode
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .handlers import routers
-from .config import cnf
-from .database.core import init_psql
-from .utils.scheduler import update_users_limits
+from src.handlers import routers
+from src.middlewares.db import DatabaseSessionMiddleware
+from src.database.core import init_psql
+from src.utils.scheduler import update_users_limits
+from src.config import cnf
 
 
 bot = Bot(
@@ -29,6 +30,8 @@ dp = Dispatcher(
     bot=bot,
     storage=MemoryStorage()
 )
+dp.message.middleware(DatabaseSessionMiddleware())
+dp.callback_query.middleware(DatabaseSessionMiddleware())
 
 scheduler = AsyncIOScheduler()
 
@@ -59,6 +62,7 @@ async def startup(bot: Bot) -> None:
         trigger='cron',
         hour=00, minute=00
     )
+    scheduler.start()
 
     logger.info('=== Bot started ===')
 

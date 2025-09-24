@@ -1,8 +1,8 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from .models.base import BaseModel
+from src.database.models.base import BaseModel
 
-from ..config import cnf
+from src.config import cnf
 
 engine = create_async_engine(
     url=cnf.psql.URL,

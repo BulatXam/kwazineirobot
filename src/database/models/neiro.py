@@ -1,8 +1,8 @@
 from sqlalchemy import Column, String, BigInteger, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 
-from .base import BaseModel
-from .user import User
+from src.database.models.base import BaseModel
+from src.database.models.user import User
 
 
 class NeiroMessage(BaseModel):
