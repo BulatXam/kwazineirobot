@@ -7,9 +7,8 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 
-from src.database.core import conn
 from src.database.models.user import User
 from src.database.models.neiro import NeiroResponse
 

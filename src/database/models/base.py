@@ -6,8 +6,6 @@ from sqlalchemy.sql import select, update as sqlalchemy_update, func
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from loguru import logger
-
 T = TypeVar("T")
 
 class ModelCRUD(Generic[T]):

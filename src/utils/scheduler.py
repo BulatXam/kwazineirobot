@@ -1,9 +1,7 @@
-from sqlalchemy import update, select
+from sqlalchemy import select
 
 from src.database.core import conn
 from src.database.models.user import User
-
-from src.config import cnf
 
 
 async def update_users_limits():

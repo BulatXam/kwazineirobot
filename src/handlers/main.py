@@ -3,10 +3,8 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.core import conn
 from src.database.models.user import User
 
 from src.filters.user import UserFilter

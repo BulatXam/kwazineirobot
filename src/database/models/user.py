@@ -1,5 +1,4 @@
-from sqlalchemy import Column, String, BigInteger, Integer, ForeignKey, Float
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, BigInteger, Float
 
 from src.config import cnf
 
