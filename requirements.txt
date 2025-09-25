@@ -11,3 +11,4 @@ pydantic-settings~=2.4.0
 openai
 loguru~=0.7.2
 APScheduler~=3.11.0
+strip_markdown~=1.3

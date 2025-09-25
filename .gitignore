@@ -1,6 +1,7 @@
 # Project cache
 **/.idea/
 **/__pycache__/
+**/.vscode/
 
 # Environment
 **/.venv/

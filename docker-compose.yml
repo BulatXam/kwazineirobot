@@ -12,19 +12,6 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  redis:
-    image: redis/redis-stack:latest
-    restart: always
-    container_name: redis
-    environment:
-      - REDIS_PASSWORD=${PASSWORD}
-    expose:
-      - 6379
-    volumes:
-      - redis-data:/data
-    env_file:
-      - .env
-
   bot:
     build:
       context: .
@@ -32,7 +19,6 @@ services:
     restart: always
     depends_on:
       - postgres
-      - redis
     env_file:
       - .env
     volumes:

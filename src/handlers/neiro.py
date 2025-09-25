@@ -56,8 +56,26 @@ async def waiting_text_message(message: Message, session: AsyncSession, state: F
     state_data = await state.get_data()
     
     model = state_data.get("model")
-    prompt = message.text
 
+    # Получаем все сообщения пользователя в текущем состоянии
+    # Если пользователь отправил несколько сообщений подряд, объединяем их
+    # Aiogram хранит только текущее сообщение, поэтому нужно использовать FSMContext для накопления
+    prompts = state_data.get("prompts", [])
+    prompts.append(message.text)
+    total_length = sum(len(p) for p in prompts)
+
+    # Если последнее сообщение < 4096, считаем что пользователь закончил ввод
+    if total_length > 10000:
+        await message.answer("Сообщение не должно быть больше 10000 символов!")
+    elif len(message.text) < 4096:
+        prompt = "".join(prompts)
+        # Очищаем накопленные сообщения
+        await state.update_data(prompts=[])
+    elif len(message.text) == 4096:
+        # Сохраняем накопленные сообщения и ждем следующего
+        await state.update_data(prompts=prompts)
+        return
+    
     user: User = await User.get(
         session=session,
         user_id=message.from_user.id
@@ -104,7 +122,7 @@ async def waiting_text_message(message: Message, session: AsyncSession, state: F
 
 {neiro_answer}
 """,
-        reply_markup=menu_keyboards.back_in_menu,
+        reply_markup=menu_keyboards.back_in_menu
     )
 
 
@@ -136,7 +154,21 @@ async def image_gen(message: Message, session: AsyncSession, state: FSMContext):
     state_data = await state.get_data()
 
     model = state_data.get("model")
-    prompt = message.text
+
+    prompts = state_data.get("prompts", [])
+    prompts.append(message.text)
+    total_length = sum(len(p) for p in prompts)
+
+    if total_length > 10000:
+        await message.answer("Сообщение не должно быть больше 10000 символов!")
+    elif len(message.text) < 4096:
+        prompt = "".join(prompts)
+        # Очищаем накопленные сообщения
+        await state.update_data(prompts=[])
+    elif len(message.text) == 4096:
+        # Сохраняем накопленные сообщения и ждем следующего
+        await state.update_data(prompts=prompts)
+        return
 
     user: User = await User.get(
         session=session,
@@ -156,8 +188,8 @@ async def image_gen(message: Message, session: AsyncSession, state: FSMContext):
         is_image=True
     )
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(neiro_answer) as resp:
+    async with aiohttp.ClientSession() as http_session:
+        async with http_session.get(neiro_answer) as resp:
             img_bytes = await resp.read()
 
     await NeiroResponse.create(

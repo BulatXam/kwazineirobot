@@ -4,6 +4,7 @@
 import openai
 import asyncio
 import redis.asyncio as redis
+import strip_markdown
 
 from typing import List, Optional, Tuple
 from loguru import logger
@@ -122,7 +123,7 @@ class NeiroChat:
         
         if response:
             return (
-                response.choices[0].message.content,
+                strip_markdown.strip_markdown(response.choices[0].message.content),
                 response.usage.total_tokens
             )
         else:

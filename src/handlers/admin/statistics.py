@@ -255,5 +255,5 @@ async def get_user_neiro_response(call: CallbackQuery, callback_data: ActionData
 
     await call.message.edit_text(
         text=statistics_texts.user_history_response(neiro_response=neiro_response),
-        reply_markup=statistics_keyboards.back_in_paginator_user_history
+        reply_markup=statistics_keyboards.back_in_paginator_user_history,
     )
