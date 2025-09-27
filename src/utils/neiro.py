@@ -3,7 +3,6 @@
 # import httpx
 import openai
 import asyncio
-import redis.asyncio as redis
 import strip_markdown
 
 from typing import List, Optional, Tuple
@@ -27,7 +26,6 @@ class NeiroChat:
             api_key=cnf.openai.TOKEN,
             base_url="https://api.hydraai.ru/v1"
         )
-        self.redis = redis.from_url(cnf.redis.URL)
 
         self.history_len = 3
 
@@ -36,7 +34,7 @@ class NeiroChat:
     async def _get_chat_history(
             self, chat_id: int
         ) -> DialogSchema:
-        """Получаем историю чата из Redis (последние 3 сообщения)"""
+        """Получаем историю чата (последние 3 сообщения)"""
         async with conn() as session:
             results = await session.execute(
                 select(NeiroMessage).join(User).where(

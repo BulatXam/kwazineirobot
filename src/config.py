@@ -74,26 +74,8 @@ class PostgresConfig(BaseSettings):
         extra = 'ignore'
 
 
-class RedisConfig(BaseSettings):
-    NAME: str
-    HOST: str
-    PORT: int
-    PASSWORD: str
-    USER: str
-
-    class Config:
-        env_prefix = 'REDIS_'
-        env_file = '.env'
-        extra = 'ignore'
-
-    @property
-    def URL(self) -> str:
-        return f"redis://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.NAME}"
-
-
 class Config:
     psql = PostgresConfig()
-    redis = RedisConfig()
     bot = BotConfig()
     proj = ProjConfig()
     openai = OpenAIConfig()

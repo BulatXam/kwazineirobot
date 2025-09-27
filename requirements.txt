@@ -3,8 +3,6 @@ aiogram~=3.18.0
 # Postgres
 SQLAlchemy~=2.0.38
 asyncpg~=0.30.0
-# Redis
-redis~=5.2.1
 # Config
 pydantic-settings~=2.4.0
 # Another
